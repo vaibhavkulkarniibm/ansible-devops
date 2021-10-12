@@ -9,9 +9,15 @@ if [ -f "$VERSION_FILE" ]; then
   export VERSION=$(cat ${VERSION_FILE})
 fi
 
+# Previous version file (semver)
+export PREVIOUS_VERSION_FILE=${TRAVIS_BUILD_DIR}/.previous_version
+if [ -f "$PREVIOUS_VERSION_FILE" ]; then
+  export PREVIOUS_VERSION=$(cat ${PREVIOUS_VERSION_FILE})
+fi
+
 # Setting the min release level will prevent builds taking place at a lower version change
 # Keep in sync with initbuild.sh (which doesn't use this env file .. yet)
-export SEMVER_MIN_RELEASE_LEVEL="${SEMVER_MIN_RELEASE_LEVEL:-patch}"
+export SEMVER_MIN_RELEASE_LEVEL="${SEMVER_MIN_RELEASE_LEVEL:-build}"
 export SEMVER_MAX_RELEASE_LEVEL="${SEMVER_MAX_RELEASE_LEVEL:-major}"
 
 # During initbuild we record the release level (aka the version bump from the last release)
@@ -32,8 +38,8 @@ export SEMVER_BUILD="(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?"
 export SEMVER_REGEXP="^${SEMVER_XYZ}${SEMVER_PRE}${SEMVER_BUILD}$"
 
 # Keep in sync with initbuild.sh (which doesn't use this env file .. yet)
-export RELEASE_BRANCH_REGEXP="^(master|v(0|[1-9][0-9]*)\.x|v(0|[1-9][0-9]*).(0|[1-9][0-9]*)\.x)$"
-export MAINTENANCE_BRANCH_REGEXP="^(v(0|[1-9][0-9]*)\.x|v(0|[1-9][0-9]*).(0|[1-9][0-9]*)\.x)$"
+export RELEASE_BRANCH_REGEXP="^(master|(0|[1-9][0-9]*)\.x|(0|[1-9][0-9]*).(0|[1-9][0-9]*)\.x)$"
+export MAINTENANCE_BRANCH_REGEXP="^((0|[1-9][0-9]*)\.x|(0|[1-9][0-9]*).(0|[1-9][0-9]*)\.x)$"
 export NO_RELEASE_BUILD_REGEXP="\+build"
 
 # Semver control overrides for maintenance branches

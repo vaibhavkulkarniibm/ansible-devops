@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Simplified port of a portion of the MAS common build system for public GitHub
-
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PATH=$PATH:$DIR
 
@@ -10,14 +9,15 @@ pip install --quiet pyyaml yamllint
 # 1. Set up semantic versioning
 # -----------------------------------------------------------------------------
 VERSION_FILE=$TRAVIS_BUILD_DIR/.version
+PREVIOUS_VERSION_FILE=${TRAVIS_BUILD_DIR}/.previous_version
 
 SEMVER_XYZ="(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
 SEMVER_PRE="(-(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?"
 SEMVER_BUILD="(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?"
 SEMVER_REGEXP="^${SEMVER_XYZ}${SEMVER_PRE}${SEMVER_BUILD}$"
 
-RELEASE_BRANCH_REGEXP="^(master|v(0|[1-9][0-9]*)\.x|v(0|[1-9][0-9]*).(0|[1-9][0-9]*)\.x)$"
-MAINTENANCE_BRANCH_REGEXP="^(v(0|[1-9][0-9]*)\.x|v(0|[1-9][0-9]*).(0|[1-9][0-9]*)\.x)$"
+RELEASE_BRANCH_REGEXP="^(master|(0|[1-9][0-9]*)\.x|(0|[1-9][0-9]*).(0|[1-9][0-9]*)\.x)$"
+MAINTENANCE_BRANCH_REGEXP="^((0|[1-9][0-9]*)\.x|(0|[1-9][0-9]*).(0|[1-9][0-9]*)\.x)$"
 
 if [[ "${TRAVIS_BRANCH}" =~ $SEMVER_REGEXP ]]; then
   echo "Need to add the correct exclusion rule into .travis.yml to prevent builds from tagged releases"
@@ -61,7 +61,7 @@ else
   echo "Patch commits : ${PATCH_COUNT}"
 
   # Important: Keep in sync with .env.sh
-  SEMVER_MIN_RELEASE_LEVEL="${SEMVER_MIN_RELEASE_LEVEL:-patch}"
+  SEMVER_MIN_RELEASE_LEVEL="${SEMVER_MIN_RELEASE_LEVEL:-build}"
   SEMVER_MAX_RELEASE_LEVEL="${SEMVER_MAX_RELEASE_LEVEL:-major}"
   # Semver control overrides for maintenance branches
   # - On a maintenance branch minor and major commits are banned as it would take the branch out of scope
@@ -133,6 +133,9 @@ fi
 
 echo "Setting ${VERSION_FILE} to ${VERSION}"
 echo -n $VERSION > $VERSION_FILE
+
+echo "Setting ${PREVIOUS_VERSION_FILE} to ${SEMVER_LAST_TAG}"
+echo -n $SEMVER_LAST_TAG > $PREVIOUS_VERSION_FILE
 
 
 # 3. Version python modules (if they exist)
