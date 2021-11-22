@@ -4,7 +4,7 @@
   vars:
     # Ensure these are kept in sync with the values used in cp4d/install-db2.yml
     cpd_meta_namespace: cpd-meta-ops
-    db2wh_instance_id: db2wh-db01
+    db2wh_instance_id: db2wh-1637153660203089
     db2wh_username: db2inst1
     db2wh_dbname: BLUDB
     # TODO: The default that is built into the manage operator isn't following

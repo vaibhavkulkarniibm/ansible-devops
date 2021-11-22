@@ -4,6 +4,7 @@
   vars:
     # Choose which catalog source to use for the MAS install, default to the IBM operator catalog
     mas_app_catalog_source: "{{ lookup('env', 'MAS_APP_CATALOG_SOURCE') | default('ibm-operator-catalog', true) }}"
+    mas_app_upgrade_strategy: "{{ lookup('env', 'MAS_APP_UPGRADE_STRATEGY') | default('Automatic', true) }}"
 
     # --- Dev catalog settings ----------------------------------------------------------------------------------------
     # Only required when using the development catalog sources for pre-release installation
