@@ -27,16 +27,16 @@
     msg: "{{ db_filenames }}"
 
 - name: Get Backup file timestamp
-  when: item | regex_search(regex)
-  set_fact:
-    db_backup_restore_timestamp: "{{ db_filenames[0] | regex_search(regex) }}"
   vars:
-    regex: '([0-9])\w+\1.\1...'
-  with_items: "{{ db_filenames }}"
+    regex: '\d+\d+\d+\d'
+  when: item is regex('^BLUDB.*')
+  set_fact:
+    db_backup_restore_timestamp: "{{ item | regex_search(regex) }}"
+  loop: "{{ db_filenames }}"
     #regex to extract the timestamp> '([0-9])\w+\1.\1...'
 
 - debug: 
-    msg: "{{ db_backup_restore_timestamp }}"
+    msg: "DB Backup Timestamp is: {{ db_backup_restore_timestamp }}"
 
 # 3. Determine which pod to run in
 # -----------------------------------------------------------------------------
@@ -79,36 +79,36 @@
 
 ####### COPYING RESTORE DB SCRIPT - NOTHING WORKS FROM THIS POINT FORWARD YET...
 
-- name: Run DB2 restore & rollforward command (this can take several minutes...)
-  shell: |
-    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "cat << EOF > /tmp/restoreDB.sh
-    db2 update dbm cfg using KEYSTORE_LOCATION '/mnt/blumeta0/home/db2inst1/db_backup/keystore.p12' KEYSTORE_TYPE PKCS12
-    sudo wvcli system disable -m 'Disable HA before Db2 maintenance'
-    db2 connect to BLUDB
-    db2 list applications
-    db2 force application all 
-    db2 terminate 
-    db2 deactivate database BLUDB
-    db2stop force
-    ipclean -a
-    db2set -null DB2COMM
-    db2start admin mode restricted access
-    db2_all "<<+0<db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20211220202431 INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING"
-    # db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT {{ db_backup_restore_timestamp }} INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING ENCRYPT;
-    # db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20211220202431 INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING
-    #db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20210425203116 INTO BLUDB REPLACE EXISTING
-    db2 rollforward db BLUDB to end of backup on all dbpartitionnums and stop
-    db2stop force
-    ipclean -a
-    db2set DB2COMM=TCPIP,SSL
-    db2start
-    db2 activate db bludb
-    wvcli system enable -m 'Enable HA after Db2 maintenance'
-    db2 connect to BLUDB
-    EOF"
-    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/restoreDB.sh"
-    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/restoreDB.sh db2inst1
-  register: restore_output
+# - name: Run DB2 restore & rollforward command (this can take several minutes...)
+#   shell: |
+#     oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "cat << EOF > /tmp/restoreDB.sh
+#     db2 update dbm cfg using KEYSTORE_LOCATION '/mnt/blumeta0/home/db2inst1/db_backup/keystore.p12' KEYSTORE_TYPE PKCS12
+#     sudo wvcli system disable -m 'Disable HA before Db2 maintenance'
+#     db2 connect to BLUDB
+#     db2 list applications
+#     db2 force application all 
+#     db2 terminate 
+#     db2 deactivate database BLUDB
+#     db2stop force
+#     ipclean -a
+#     db2set -null DB2COMM
+#     db2start admin mode restricted access
+#     db2_all "<<+0<db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20211224152659 INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING"
+#     # db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT {{ db_backup_restore_timestamp }} INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING ENCRYPT;
+#     # db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20211220202431 INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING
+#     #db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20210425203116 INTO BLUDB REPLACE EXISTING
+#     db2 rollforward db BLUDB to end of backup on all dbpartitionnums and stop
+#     db2stop force
+#     ipclean -a
+#     db2set DB2COMM=TCPIP,SSL
+#     db2start
+#     db2 activate db bludb
+#     wvcli system enable -m 'Enable HA after Db2 maintenance'
+#     db2 connect to BLUDB
+#     EOF"
+#     oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/restoreDB.sh"
+#     oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/restoreDB.sh db2inst1
+#   register: restore_output
 
 #     # /db2u/scripts/db_restore_extdb.sh --bkp-dir /mnt/blumeta0/home/db2inst1/db_backup --bkp-timestamp 20211220202431 --keystore-dir /mnt/blumeta0/home/db2inst1/db_backup --dbname BLUDB --verbose
 
