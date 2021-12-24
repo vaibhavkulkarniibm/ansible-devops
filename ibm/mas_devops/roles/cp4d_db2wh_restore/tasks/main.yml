@@ -1,0 +1,125 @@
+---
+# Should should be part of the manage operator, but is not so we have to do it
+# as a seperate step in the install flow for now :(
+
+# 1. Provide debug information to the user
+# -----------------------------------------------------------------------------
+- name: "Debug information"
+  debug:
+    msg:
+      - "CPD Namespace .......................... {{ cpd_meta_namespace }}"
+      - "DB2 Instance ID ........................ {{ db2wh_instance_id }}"
+
+- name: get files
+  find:
+    paths: "{{ db2wh_backup_folder }}"
+    file_type: "file"
+  register: find_result
+
+- set_fact: 
+    db_filenames: "{{ db_filenames }} + [ '{{ item | basename }}' ]"
+  with_items: "{{ full_path }}"
+  vars:
+    db_filenames: []
+    full_path: "{{ find_result.files | map(attribute='path') | list }}"
+
+- debug: 
+    msg: "{{ db_filenames }}"
+
+- name: Get Backup file timestamp
+  when: item | regex_search(regex)
+  set_fact:
+    db_backup_restore_timestamp: "{{ db_filenames[0] | regex_search(regex) }}"
+  vars:
+    regex: '([0-9])\w+\1.\1...'
+  with_items: "{{ db_filenames }}"
+    #regex to extract the timestamp> '([0-9])\w+\1.\1...'
+
+- debug: 
+    msg: "{{ db_backup_restore_timestamp }}"
+
+# 3. Determine which pod to run in
+# -----------------------------------------------------------------------------
+- name: "Lookup db2 Pod"
+  community.kubernetes.k8s_info:
+    kind: Pod
+    namespace: "{{ cpd_meta_namespace }}"
+    label_selectors:
+      - type=engine
+      - app={{ db2wh_instance_id }}
+  register: db2wh_pod
+
+- name: Configure facts
+  set_fact:
+    db2wh_pod_name: "{{ db2wh_pod.resources[0].metadata.name }}"
+
+- name: "Debug information"
+  debug:
+    msg:
+      - "Pod name ........... {{ db2wh_pod_name }}"
+
+- name: "Uploading DB2 backup files into DB2WH pod {{ db2wh_instance_id }}-db2u-0/tmp...(this can take several minutes)"
+  shell: | 
+    oc rsync --progress=true {{ db2wh_backup_folder }}/ -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0:/tmp/ --no-perms
+  register: copy_output
+
+- debug:
+    msg: "{{ copy_output }}"
+
+# - debug:
+#     msg: "oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c 'cd tmp/db_backup && sudo mv BLUDB.0.db2inst1.DBPART000.* /mnt/blumeta0/home/db2inst1/db_backup &&  sudo chown db2inst1 /mnt/blumeta0/home/db2inst1/db_backup/*'"
+
+- name: "Move backup files from /tmp to db2inst1 folder..."
+  shell: | 
+    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "cd tmp && sudo mkdir /mnt/blumeta0/home/db2inst1/db_backup && sudo mv BLUDB.0.db2inst1.DBPART000.* /mnt/blumeta0/home/db2inst1/db_backup && sudo mv keystore.* /mnt/blumeta0/home/db2inst1/db_backup && sudo chown db2inst1 /mnt/blumeta0/home/db2inst1/db_backup/*"
+  register: apply_output
+
+- debug:
+    msg: "{{ apply_output }}"
+
+####### COPYING RESTORE DB SCRIPT - NOTHING WORKS FROM THIS POINT FORWARD YET...
+
+- name: Run DB2 restore & rollforward command (this can take several minutes...)
+  shell: |
+    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "cat << EOF > /tmp/restoreDB.sh
+    db2 update dbm cfg using KEYSTORE_LOCATION '/mnt/blumeta0/home/db2inst1/db_backup/keystore.p12' KEYSTORE_TYPE PKCS12
+    sudo wvcli system disable -m 'Disable HA before Db2 maintenance'
+    db2 connect to BLUDB
+    db2 list applications
+    db2 force application all 
+    db2 terminate 
+    db2 deactivate database BLUDB
+    db2stop force
+    ipclean -a
+    db2set -null DB2COMM
+    db2start admin mode restricted access
+    db2_all "<<+0<db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20211220202431 INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING"
+    # db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT {{ db_backup_restore_timestamp }} INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING ENCRYPT;
+    # db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20211220202431 INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING
+    #db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20210425203116 INTO BLUDB REPLACE EXISTING
+    db2 rollforward db BLUDB to end of backup on all dbpartitionnums and stop
+    db2stop force
+    ipclean -a
+    db2set DB2COMM=TCPIP,SSL
+    db2start
+    db2 activate db bludb
+    wvcli system enable -m 'Enable HA after Db2 maintenance'
+    db2 connect to BLUDB
+    EOF"
+    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/restoreDB.sh"
+    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/restoreDB.sh db2inst1
+  register: restore_output
+
+#     # /db2u/scripts/db_restore_extdb.sh --bkp-dir /mnt/blumeta0/home/db2inst1/db_backup --bkp-timestamp 20211220202431 --keystore-dir /mnt/blumeta0/home/db2inst1/db_backup --dbname BLUDB --verbose
+
+# # - name: Run DB2 restore & rollforward command (this can take several minutes...)
+# #   shell: |
+# #     oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "cat << EOF > /tmp/restoreDB.sh
+# #     /db2u/scripts/db_restore_extdb.sh --bkp-dir /mnt/blumeta0/home/db2inst1/db_backup --bkp-timestamp {{ db_backup_restore_timestamp }} --keystore-dir /mnt/blumeta0/home/db2inst1/db_backup --tgt-dbname BLUDB
+# #     EOF"
+# #     oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/restoreDB.sh"
+# #     oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/restoreDB.sh db2inst1
+# #   register: restore_output
+
+# - debug: 
+#     msg: "{{ restore_output }}"
