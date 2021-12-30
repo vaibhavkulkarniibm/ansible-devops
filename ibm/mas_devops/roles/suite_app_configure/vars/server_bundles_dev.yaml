@@ -1,0 +1,11 @@
+spec:
+  settings:
+    deployment:
+        serverBundles:
+          - bundleType: all
+            isDefault: true
+            isMobileTarget: true
+            isUserSyncTarget: true
+            name: default
+            replica: 2
+            routeSubDomain: bundle1

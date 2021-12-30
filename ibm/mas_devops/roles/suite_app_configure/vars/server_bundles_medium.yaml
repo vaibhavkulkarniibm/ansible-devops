@@ -1,0 +1,32 @@
+spec:
+  settings:
+    deployment:
+        serverBundles:
+          - bundleType: ui
+            isDefault: true
+            isMobileTarget: true
+            isUserSyncTarget: false
+            name: ui
+            replica: 6
+            routeSubDomain: bundle1
+          - bundleType: mea
+            isDefault: false
+            isMobileTarget: false
+            isUserSyncTarget: true
+            name: mif
+            replica: 2
+            routeSubDomain: bundle2
+          - bundleType: report
+            isDefault: false
+            isMobileTarget: false
+            isUserSyncTarget: false
+            name: rpt
+            replica: 2
+            routeSubDomain: bundle3
+          - bundleType: cron
+            isDefault: false
+            isMobileTarget: false
+            isUserSyncTarget: false
+            name: cron
+            replica: 1
+            routeSubDomain: bundle4

@@ -47,6 +47,22 @@
     namespace: "{{ mas_app_namespace }}"
     definition: "{{ lookup('template', 'templates/workspace.yml.j2') }}"
 
+# 5. Patch Manage service bundles
+# -----------------------------------------------------------------------------
+- name: "Patch service bundles"
+  shell: |
+    cat server_bundles_{{provision_size}}.yaml
+    oc patch {{mas_app_ws_kind}} {{mas_instance_id}}-{{mas_workspace_id}} -n {{mas_app_namespace}} --type merge --patch "$(cat server_bundles_{{provision_size}}.yaml)"
+  register: prepare_cmds_status
+  args:
+    chdir: '{{ role_path }}/vars'
+
+- name: "Patch debug information"
+  debug:
+    msg:
+      - "Result (stdout) ........................ {{ prepare_cmds_status.stdout }}"
+      - "result (stderr) ........................ {{ prepare_cmds_status.stderr }}"
+
 
 # 8. Wait for application workspace to be ready
 # -----------------------------------------------------------------------------
