@@ -9,6 +9,7 @@
     msg:
       - "CPD Namespace .......................... {{ cpd_meta_namespace }}"
       - "DB2 Instance ID ........................ {{ db2wh_instance_id }}"
+      - "DB2 Backup Files Directory ............. {{ db2wh_backup_dir }}"
 
 # 3. Determine which pod to run in
 # -----------------------------------------------------------------------------
@@ -25,69 +26,83 @@
   set_fact:
     db2wh_pod_name: "{{ db2wh_pod.resources[0].metadata.name }}"
 
-- name: "Debug information - Part 3"
-  debug:
+- debug:
     msg:
       - "Pod name ........... {{ db2wh_pod_name }}"
 
-- name: "Copying DB2 backup script to DB2WH pod {{ db2wh_instance_id }}..."
-  shell: | 
-    oc cp -n {{ cpd_meta_namespace }} {{ role_path }}/files/backupDB.sh c-{{ db2wh_instance_id }}-db2u-0:{{ db2wh_script_path }}
-  register: copy_output
-
-- debug:
-    msg: "{{ copy_output }}"
-
-- name: "Applying permissions to run DB2 backup script DB2WH pod {{ db2wh_instance_id }}..."
-  shell: | 
-    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "chmod 755 {{ db2wh_script_path }}"
-  register: apply_output
-
-- debug:
-    msg: "{{ apply_output }}"
-
 - name: "Running backup script on DB2WH pod {{ db2wh_instance_id }} as db2inst username...(this can take several minutes)"
-  shell: | 
-    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- su -lc {{ db2wh_script_path }} db2inst1
-  register: generate_backup_output
+  shell: |
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "cat << EOF > /tmp/backupDB.sh
+    mkdir {{ db2wh_backup_dir }}
+    db2 connect to BLUDB
+    db2 backup db BLUDB on all dbpartitionnums online to {{ db2wh_backup_dir }} include logs without prompting
+    exit 0
+    EOF"
+    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/backupDB.sh"
+    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/backupDB.sh db2inst1
+  register: backup_output
+  failed_when: backup_output.rc != 0
 
 - debug:
-    msg: "{{ generate_backup_output.stdout_lines }}"
+    msg: "{{ backup_output.stdout_lines }}"
 
-# #===================================================================================================================
-# # COPY THE FILE FROM THE POD TO A TARGET MACHINE
-# #===================================================================================================================
+# #========================================================================================================================================================
+# # COPY THE BACKUP FILES FROM THE POD TO A TARGET MACHINE
+# #========================================================================================================================================================
 
 - name: "Creating backup folder in {{ db2wh_instance_id }}..."
   shell: | 
-    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "sudo mkdir db_backup"
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "sudo mkdir db_backup"
   register: creating_backup_folder_output
-
-- debug:
-    msg: "{{ creating_backup_folder_output }}"
 
 - name: "Copying backup files to backup folder in {{ db2wh_instance_id }}..."
   shell: | 
-    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "sudo cp /mnt/blumeta0/home/db2inst1/db_backup/* /db_backup"
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "sudo cp {{ db2wh_backup_dir }}/* /db_backup"
   register: copy_backup_folder_output
 
-- debug:
-    msg: "{{ copy_backup_folder_output }}"
+# #========================================================================================================================================================
+# # EXTRACT MASTER KEY LABEL: https://www.ibm.com/docs/en/db2/11.5?topic=edr-restoring-encrypted-backup-image-different-system-local-keystore
+# #========================================================================================================================================================
 
-- name: "Copying backup .p12 files to backup folder in {{ db2wh_instance_id }}..."
+- name: "Check current Master Key Label from source keystore.p12..."
   shell: | 
-    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "sudo cp -a /mnt/blumeta0/db2/keystore/. /db_backup"
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- su -lc "gsk8capicmd_64 -cert -list all -db '/mnt/blumeta0/db2/keystore/keystore.p12' -stashed" db2inst1
+  register: check_master_label_output
+
+- name: "Get current Master Key Label from source keystore.p12..."
+  vars:
+    regex: '\DB2(.*)'
+  when: item is regex('\DB2(.*)') 
+  set_fact:
+    master_key_label: "{{ item | regex_search(regex) }}"
+  with_items: "{{ check_master_label_output.stdout_lines | list }}"
+
+- name: "Extract Master Key Label from keystore.p12..."
+  shell: | 
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- su -lc "gsk8capicmd_64 -secretkey -extract -db '/mnt/blumeta0/db2/keystore/keystore.p12' -stashed -label '{{ master_key_label }}' -format ascii -target '/mnt/blumeta0/db2/keystore/master_key_label.kdb'" db2inst1
+  register: extract_master_label_output
+
+- name: "Copying Master Key Label secret to backup folder in {{ db2wh_instance_id }}..."
+  shell: | 
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "sudo cp -a /mnt/blumeta0/db2/keystore/. /db_backup"
   register: copy_bkp_locally_output
 
+# oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "sudo chown db2uadm /db_backup/ && sudo chown db2uadm /db_backup/*"
 - name: "Applying db2uadm permissions to copy backup files from {{ db2wh_instance_id }}..."
   shell: | 
-    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "sudo chown db2uadm /db_backup/*"
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "sudo chown -R db2uadm /db_backup/"
   register: apply_db2uadm_output
 
-- name: "Copying backup file from {{ db2wh_instance_id }} pod to your local machine... (this can take several minutes)"
+- name: "Downloading backup files from {{ db2wh_instance_id }} pod to your local machine... (this can take several minutes)"
   shell: | 
-    oc rsync --progress=true -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0:/db_backup/. {{ db2wh_backup_folder }}
+    oc rsync --progress=true -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }}:/db_backup/. {{ db2wh_backup_folder }}
   register: copy_bkp_locally_output
 
 - debug:
     msg: "{{ copy_bkp_locally_output }}"
+
+## TODO: Clean up backup files from source db '{{ db2wh_backup_dir }}/' and '/db_backup/' to preserve storage
+- name: "Delete db_backup folder from {{ db2wh_instance_id }} now that backup files were transferred locally..."
+  when: copy_bkp_locally_output.rc == 0
+  shell: | 
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "sudo rm -rf /db_backup && sudo rm -rf {{ db2wh_backup_dir }}"

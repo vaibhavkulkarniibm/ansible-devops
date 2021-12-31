@@ -1,7 +1,4 @@
 ---
-# Should should be part of the manage operator, but is not so we have to do it
-# as a seperate step in the install flow for now :(
-
 # 1. Provide debug information to the user
 # -----------------------------------------------------------------------------
 - name: "Debug information"
@@ -9,8 +6,10 @@
     msg:
       - "CPD Namespace .......................... {{ cpd_meta_namespace }}"
       - "DB2 Instance ID ........................ {{ db2wh_instance_id }}"
+      - "DB2 Backup Files Directory ............. {{ db2wh_backup_dir }}"
+      - "DB2 Backup Temp Log Files Directory .... {{ db2wh_backup_tmp_logs }}" 
 
-- name: get files
+- name: "Check backup files in {{ db2wh_backup_folder }} folder"
   find:
     paths: "{{ db2wh_backup_folder }}"
     file_type: "file"
@@ -22,9 +21,6 @@
   vars:
     db_filenames: []
     full_path: "{{ find_result.files | map(attribute='path') | list }}"
-
-- debug: 
-    msg: "{{ db_filenames }}"
 
 - name: Get Backup file timestamp
   vars:
@@ -58,68 +54,104 @@
     msg:
       - "Pod name ........... {{ db2wh_pod_name }}"
 
-- name: "Uploading DB2 backup files into DB2WH pod {{ db2wh_instance_id }}-db2u-0/tmp...(this can take several minutes)"
+- name: "Creating backup folder in {{ db2wh_pod_name }}..."
   shell: | 
-    oc rsync --progress=true {{ db2wh_backup_folder }}/ -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0:/tmp/ --no-perms
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "sudo mkdir /tmp/db_backup {{ db2wh_backup_tmp_logs }} && sudo chown -R db2uadm /tmp/db_backup/ && sudo chown -R db2inst1 {{ db2wh_backup_tmp_logs }}"
+  register: creating_backup_folder_output
+
+- name: "Uploading DB2 backup files into DB2WH pod {{ db2wh_pod_name }}/tmp/db_backup/...(this can take several minutes)"
+  shell: | 
+    oc rsync --progress=true {{ db2wh_backup_folder }}/ -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }}:/tmp/db_backup/ --no-perms
   register: copy_output
+  failed_when: copy_output.rc != 0
 
 - debug:
-    msg: "{{ copy_output }}"
+    msg: "{{ copy_output.stdout_lines }}"
 
-# - debug:
-#     msg: "oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c 'cd tmp/db_backup && sudo mv BLUDB.0.db2inst1.DBPART000.* /mnt/blumeta0/home/db2inst1/db_backup &&  sudo chown db2inst1 /mnt/blumeta0/home/db2inst1/db_backup/*'"
-
-- name: "Move backup files from /tmp to db2inst1 folder..."
+- name: "Move backup files from /tmp/db_backup/ to db2inst1/db_backup/ folder..."
   shell: | 
-    oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "cd tmp && sudo mkdir /mnt/blumeta0/home/db2inst1/db_backup && sudo mv BLUDB.0.db2inst1.DBPART000.* /mnt/blumeta0/home/db2inst1/db_backup && sudo mv keystore.* /mnt/blumeta0/home/db2inst1/db_backup && sudo chown db2inst1 /mnt/blumeta0/home/db2inst1/db_backup/*"
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "sudo mv /tmp/db_backup/ /mnt/blumeta0/home/db2inst1/ && sudo chown -R db2inst1 {{ db2wh_backup_dir }}/*"
   register: apply_output
 
-- debug:
-    msg: "{{ apply_output }}"
+# #========================================================================================================================================================================
+# # ADD SOURCE MASTER KEY LABEL INTO TARGET KEYSTORE.P12: https://www.ibm.com/docs/en/db2/11.5?topic=edr-restoring-encrypted-backup-image-different-system-local-keystore
+# #========================================================================================================================================================================
 
-####### COPYING RESTORE DB SCRIPT - NOTHING WORKS FROM THIS POINT FORWARD YET...
+- name: "Check source keystore.p12 master key label..."
+  shell: | 
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- su -lc "gsk8capicmd_64 -cert -list all -db '{{ db2wh_backup_dir }}/keystore.p12' -stashed" db2inst1
+  register: check_master_label_output
 
-# - name: Run DB2 restore & rollforward command (this can take several minutes...)
-#   shell: |
-#     oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "cat << EOF > /tmp/restoreDB.sh
-#     db2 update dbm cfg using KEYSTORE_LOCATION '/mnt/blumeta0/home/db2inst1/db_backup/keystore.p12' KEYSTORE_TYPE PKCS12
-#     sudo wvcli system disable -m 'Disable HA before Db2 maintenance'
-#     db2 connect to BLUDB
-#     db2 list applications
-#     db2 force application all 
-#     db2 terminate 
-#     db2 deactivate database BLUDB
-#     db2stop force
-#     ipclean -a
-#     db2set -null DB2COMM
-#     db2start admin mode restricted access
-#     db2_all "<<+0<db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20211224152659 INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING"
-#     # db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT {{ db_backup_restore_timestamp }} INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING ENCRYPT;
-#     # db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20211220202431 INTO BLUDB REPLACE EXISTING WITHOUT PROMPTING
-#     #db2 RESTORE DATABASE BLUDB FROM /mnt/blumeta0/home/db2inst1/db_backup TAKEN AT 20210425203116 INTO BLUDB REPLACE EXISTING
-#     db2 rollforward db BLUDB to end of backup on all dbpartitionnums and stop
-#     db2stop force
-#     ipclean -a
-#     db2set DB2COMM=TCPIP,SSL
-#     db2start
-#     db2 activate db bludb
-#     wvcli system enable -m 'Enable HA after Db2 maintenance'
-#     db2 connect to BLUDB
-#     EOF"
-#     oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/restoreDB.sh"
-#     oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/restoreDB.sh db2inst1
-#   register: restore_output
+- name: "Get source keystore.p12 master key label..."
+  vars:
+    regex: '\DB2(.*)'
+  when: item is regex('\DB2(.*)') 
+  set_fact:
+    master_key_label: "{{ item | regex_search(regex) }}"
+  with_items: "{{ check_master_label_output.stdout_lines | list }}"
 
-#     # /db2u/scripts/db_restore_extdb.sh --bkp-dir /mnt/blumeta0/home/db2inst1/db_backup --bkp-timestamp 20211220202431 --keystore-dir /mnt/blumeta0/home/db2inst1/db_backup --dbname BLUDB --verbose
+- name: "Add extracted master key label from source into target keystore.p12 ..."
+  shell: | 
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- su -lc "gsk8capicmd_64 -secretkey -add -db '/mnt/blumeta0/db2/keystore/keystore.p12' -stashed -label '{{ master_key_label }}' -format ascii -file {{ db2wh_backup_dir }}/master_key_label.kdb" db2inst1
+  register: extract_master_label_output
 
-# # - name: Run DB2 restore & rollforward command (this can take several minutes...)
-# #   shell: |
-# #     oc exec -it -n {{ cpd_meta_namespace }} c-{{ db2wh_instance_id }}-db2u-0 -- bash -c "cat << EOF > /tmp/restoreDB.sh
-# #     /db2u/scripts/db_restore_extdb.sh --bkp-dir /mnt/blumeta0/home/db2inst1/db_backup --bkp-timestamp {{ db_backup_restore_timestamp }} --keystore-dir /mnt/blumeta0/home/db2inst1/db_backup --tgt-dbname BLUDB
-# #     EOF"
-# #     oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/restoreDB.sh"
-# #     oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/restoreDB.sh db2inst1
-# #   register: restore_output
+# #========================================================================================================================================================================
+# # RUN DB2 RESTORE & ROLLFORWARD COMMANDS
+# #========================================================================================================================================================================
 
-# - debug: 
-#     msg: "{{ restore_output }}"
+- name: Deactivate DB2 in preparation for restore
+  shell: |
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "cat << EOF > /tmp/prepRestoreDB.sh
+    sudo wvcli system disable -m 'Disable HA before Db2 maintenance'
+    db2 connect to BLUDB
+    db2 list applications
+    db2 force application all 
+    db2 terminate 
+    db2 deactivate database BLUDB
+    db2stop force
+    ipclean -a
+    db2set -null DB2COMM
+    db2start admin mode restricted access
+    EOF"
+    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/prepRestoreDB.sh"
+    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/prepRestoreDB.sh db2inst1
+  register: prep_restore_output
+
+- debug: 
+    msg: "{{ prep_restore_output.stdout_lines }}"
+
+- name: "Run DB2 RESTORE command (this can take several minutes...)"
+  shell: | 
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- su -lc "db2 RESTORE DATABASE BLUDB FROM {{ db2wh_backup_dir }} TAKEN AT {{ db_backup_restore_timestamp }} INTO BLUDB LOGTARGET {{ db2wh_backup_tmp_logs }} REPLACE EXISTING WITHOUT PROMPTING" db2inst1
+  register: restore_output
+  failed_when: restore_output.rc != 0 and restore_output.rc != 2
+
+- debug: 
+    msg: "{{ restore_output.stdout_lines }}"
+
+- name: "Run DB2 ROLLFORWARD command (this can take several minutes...)"
+  shell: | 
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- su -lc "db2 'rollforward db BLUDB to end of backup and complete overflow log path ('/tmp/logs') noretrieve'" db2inst1
+  register: rollforward_output
+  failed_when: rollforward_output.rc != 0
+
+- debug: 
+    msg: "{{ rollforward_output.stdout_lines }}"
+
+- name: "Activate DB2 as restore was successful"
+  shell: |
+    oc exec -it -n {{ cpd_meta_namespace }} {{ db2wh_pod_name }} -- bash -c "cat << EOF > /tmp/postRestoreDB.sh
+    db2stop force
+    ipclean -a
+    db2set DB2COMM=TCPIP,SSL
+    db2start
+    db2 activate db bludb
+    wvcli system enable -m 'Enable HA after Db2 maintenance'
+    db2 connect to BLUDB
+    EOF"
+    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- bash -c "chmod 755 /tmp/postRestoreDB.sh"
+    oc exec -it -n {{cpd_meta_namespace}} {{db2wh_pod_name}} -- su -lc /tmp/postRestoreDB.sh db2inst1
+  register: post_restore_output
+
+- debug: 
+    msg: "{{ post_restore_output.stdout_lines }}"

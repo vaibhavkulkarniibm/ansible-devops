@@ -3,8 +3,9 @@
   any_errors_fatal: true
   vars:
     # Ensure these are kept in sync with the values used in cp4d/install-services-db2.yml
-    # cpd_meta_namespace: "{{ lookup('env', 'CPD_NAMESPACE') | default('cpd-meta-ops', true) }}"
-    # db2wh_instance_name: "{{ lookup('env', 'DB2WH_INSTANCE_NAME') }}"
+    # cpd_meta_namespace: "{{ lookup('env', 'CPD_NAMESPACE') }}"
+    # db2wh_instance_id: "{{ lookup('env', 'DB2WH_INSTANCE_ID') }}"
+    # db2wh_backup_folder: "{{ lookup('env', 'DB2WH_BACKUP_DIR') }}"
   roles:
     # - ibm.mas_devops.cp4d_db2wh_backup
     - ibm.mas_devops.cp4d_db2wh_restore

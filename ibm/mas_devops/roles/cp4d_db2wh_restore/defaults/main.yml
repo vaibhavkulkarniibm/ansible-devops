@@ -1,4 +1,5 @@
-db2wh_instance_id: 'db2wh-1640284990806634'
-db2wh_script_path: '/tmp/restoreDB.sh'
+db2wh_instance_id: 'db2wh-1640887574474670'
 db2wh_backup_folder: '/Users/andre.marcelino/Documents/git/maximoappsuite/devops-configs/db_backup'
 cpd_meta_namespace: 'cpd-services'
+db2wh_backup_dir: /mnt/blumeta0/home/db2inst1/db_backup
+db2wh_backup_tmp_logs: /tmp/db_backup_logs
