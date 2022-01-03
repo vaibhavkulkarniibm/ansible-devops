@@ -233,7 +233,7 @@
 - debug:
     msg: "{{ post_restore_output.stdout_lines }}"
 
-# 7. Delete temporary db2 backup files in target db2wh pod 
+# 7. Delete temporary db2 backup files in target db2wh pod
 # -----------------------------------------------------------------------------
 - name: "Delete db_backup folder from {{ db2wh_instance_id_target }} now that backup files were restored..."
   when: post_restore_output.rc == 0

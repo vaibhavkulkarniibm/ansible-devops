@@ -118,7 +118,7 @@
 - debug:
     msg: "{{ copy_bkp_locally_output }}"
 
-# 7. Delete temporary db2 backup files in source db2wh pod 
+# 7. Delete temporary db2 backup files in source db2wh pod
 # -----------------------------------------------------------------------------
 - name: "Delete temporary db2 backup files from {{ db2wh_instance_id_source }} now that backup is complete"
   when: copy_bkp_locally_output.rc == 0
