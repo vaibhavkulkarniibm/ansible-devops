@@ -98,7 +98,7 @@
 - name: "Check if oc login target is not provided"
   when: oc_login_target is not defined or oc_login_target == ""
   debug:
-    msg: "oc_login_target property has not been set, it will try to find target db2wh in same cluster as source db2wh."
+    msg: "oc_login_target property has not been set, skip oc login command"
 
 # 3. Determine which pod to run in
 # -----------------------------------------------------------------------------
