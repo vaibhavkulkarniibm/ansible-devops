@@ -1,7 +1,4 @@
 ---
-# Should should be part of the manage operator, but is not so we have to do it
-# as a seperate step in the install flow for now :(
-
 # 1. Provide debug information to the user
 # -----------------------------------------------------------------------------
 - name: "DB2 Backup - Debug information"
@@ -49,7 +46,9 @@
       - "Pod name ........... {{ db2wh_pod_name }}"
   failed_when: db2wh_pod_name is not defined or db2wh_pod_name == ""
 
-- name: "Running backup script on DB2WH pod {{ db2wh_instance_id_source }} as db2inst username...(this can take several minutes)"
+# 4. Run backup script in source db2wh pod
+# -----------------------------------------------------------------------------
+- name: "Running backup script on DB2WH pod {{ db2wh_instance_id_source }} as db2inst username... (this can take several minutes)"
   shell: |
     oc exec -it -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }} -- bash -c "cat << EOF > /tmp/backupDB.sh
     mkdir {{ db2wh_backup_dir }}
@@ -65,61 +64,63 @@
 - debug:
     msg: "{{ backup_output.stdout_lines }}"
 
-# #========================================================================================================================================================
-# # COPY THE BACKUP FILES FROM THE POD TO A TARGET MACHINE
-# #========================================================================================================================================================
-
-- name: "Creating backup folder in {{ db2wh_instance_id_source }}..."
-  shell: | 
+# 5. Create temporary backup folder in source db2wh pod
+# -----------------------------------------------------------------------------
+- name: "Creating backup folder in {{ db2wh_instance_id_source }}"
+  shell: |
     oc exec -it -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }} -- bash -c "sudo mkdir db_backup"
   register: creating_backup_folder_output
 
-- name: "Copying backup files to backup folder in {{ db2wh_instance_id_source }}..."
-  shell: | 
+- name: "Copying backup files to backup folder in {{ db2wh_instance_id_source }}"
+  shell: |
     oc exec -it -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }} -- bash -c "sudo cp {{ db2wh_backup_dir }}/* /db_backup"
   register: copy_backup_folder_output
 
-# #========================================================================================================================================================
-# # EXTRACT MASTER KEY LABEL: https://www.ibm.com/docs/en/db2/11.5?topic=edr-restoring-encrypted-backup-image-different-system-local-keystore
-# #========================================================================================================================================================
+# 6. Extract db2wh keystore master key label and copy keystore files to backup folder
+# https://www.ibm.com/docs/en/db2/11.5?topic=edr-restoring-encrypted-backup-image-different-system-local-keystore
+# -----------------------------------------------------------------------------------------------------------------
 
-- name: "Check current Master Key Label from source keystore.p12..."
-  shell: | 
+- name: "Check current Master Key Label from source keystore.p12"
+  shell: |
     oc exec -it -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }} -- su -lc "gsk8capicmd_64 -cert -list all -db '/mnt/blumeta0/db2/keystore/keystore.p12' -stashed" db2inst1
   register: check_master_label_output
 
-- name: "Get current Master Key Label from source keystore.p12..."
+- name: "Get current Master Key Label from source keystore.p12"
   vars:
     regex: '\DB2(.*)'
-  when: item is regex('\DB2(.*)') 
+  when: item is regex('\DB2(.*)')
   set_fact:
     master_key_label: "{{ item | regex_search(regex) }}"
   with_items: "{{ check_master_label_output.stdout_lines | list }}"
 
-- name: "Extract Master Key Label from keystore.p12..."
-  shell: | 
+- name: "Extract Master Key Label from keystore.p12"
+  shell: |
     oc exec -it -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }} -- su -lc "gsk8capicmd_64 -secretkey -extract -db '/mnt/blumeta0/db2/keystore/keystore.p12' -stashed -label '{{ master_key_label }}' -format ascii -target '/mnt/blumeta0/db2/keystore/master_key_label.kdb'" db2inst1
   register: extract_master_label_output
 
-- name: "Copying Master Key Label secret to backup folder in {{ db2wh_instance_id_source }}..."
-  shell: | 
+- name: "Copying Master Key Label secret to backup folder in {{ db2wh_instance_id_source }}"
+  shell: |
     oc exec -it -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }} -- bash -c "sudo cp -a /mnt/blumeta0/db2/keystore/. /db_backup"
   register: copy_bkp_locally_output
 
-- name: "Applying db2uadm permissions to copy backup files from {{ db2wh_instance_id_source }}..."
-  shell: | 
+- name: "Applying db2uadm permissions to copy backup files from {{ db2wh_instance_id_source }}"
+  shell: |
     oc exec -it -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }} -- bash -c "sudo chown -R db2uadm /db_backup/"
   register: apply_db2uadm_output
 
+# 6. Download db2 backup files to local machine
+# -----------------------------------------------------------------------------
 - name: "Downloading backup files from {{ db2wh_instance_id_source }} pod to your local machine... (this can take several minutes)"
-  shell: | 
+  shell: |
     oc rsync --progress=true -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }}:/db_backup/. {{ db2wh_backup_folder }}
   register: copy_bkp_locally_output
 
 - debug:
     msg: "{{ copy_bkp_locally_output }}"
 
-- name: "Delete db_backup folder from {{ db2wh_instance_id_source }} now that backup files were transferred locally..."
+# 7. Delete temporary db2 backup files in source db2wh pod 
+# -----------------------------------------------------------------------------
+- name: "Delete temporary db2 backup files from {{ db2wh_instance_id_source }} now that backup is complete"
   when: copy_bkp_locally_output.rc == 0
-  shell: | 
+  shell: |
     oc exec -it -n {{ cpd_meta_namespace_source }} {{ db2wh_pod_name }} -- bash -c "sudo rm -rf /db_backup && sudo rm -rf {{ db2wh_backup_dir }} && sudo rm -rf /mnt/blumeta0/db2/keystore/master_key_label.kdb"
