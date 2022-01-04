@@ -110,3 +110,10 @@
     state: present
     namespace: "{{ mas_namespace }}"
     definition: "{{ cr_definition }}"
+
+# 8. Handle IBM Common Services Install plan approvals when upgragre strategy is set to Manual
+# -----------------------------------------------------------------------------
+- include_tasks: tasks/ibm-common-services.yml
+  loop: "{{ibm_common_services_subscription_labels}}"
+  when:
+    - mas_upgrade_strategy == 'Manual'
