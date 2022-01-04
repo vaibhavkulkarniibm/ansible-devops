@@ -39,7 +39,6 @@
       - "Workspace ID .............. {{ mas_workspace_id }}"
       - "MAS app namespace ......... {{ mas_app_namespace }}"
 
-
 # 4. Workspace configuration
 # -----------------------------------------------------------------------------
 - name: Configure application in workspace
@@ -47,6 +46,22 @@
     state: present
     namespace: "{{ mas_app_namespace }}"
     definition: "{{ lookup('template', 'templates/workspace.yml.j2') }}"
+
+# 5. Patch Manage service bundles
+# -----------------------------------------------------------------------------
+- name: "Patch service bundles"
+  shell: |
+    cat server_bundles_{{provision_size}}.yaml
+    oc patch {{mas_app_ws_kind}} {{mas_instance_id}}-{{mas_workspace_id}} -n {{mas_app_namespace}} --type merge --patch "$(cat server_bundles_{{provision_size}}.yaml)"
+  register: prepare_cmds_status
+  args:
+    chdir: '{{ role_path }}/vars'
+
+- name: "Patch debug information"
+  debug:
+    msg:
+      - "Result (stdout) ........................ {{ prepare_cmds_status.stdout }}"
+      - "result (stderr) ........................ {{ prepare_cmds_status.stderr }}"
 
 
 # 8. Wait for application workspace to be ready
@@ -62,9 +77,9 @@
       status: "True"
       type: Ready
     wait_sleep: 30
-    wait_timeout: 300 # 5 minutes before we give up and fall back into the retry loop
+    wait_timeout: "{{ mas_app_cfg_timeout }}" # before we give up and fall back into the retry loop
   register: app_ws_cr_result
-  retries: 40 # 5 mins each loop * 40 loops =~ 2 hours
+  retries: "{{ mas_app_cfg_retries }}"
   delay: 0
   until:
     - app_ws_cr_result.resources is defined
