@@ -12,7 +12,7 @@
     namespace: "{{ ibm_common_services_namespace }}"
     label_selectors:
       - "operators.coreos.com/{{item}}"
-  register: _item_subscription      
+  register: _item_subscription
 
 - name: Lookup and Approve IBM Common Services operators
   block:

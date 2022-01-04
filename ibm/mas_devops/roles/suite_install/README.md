@@ -6,6 +6,7 @@ TODO: Summarize role
 Role Variables
 --------------
 - `mas_catalog_source` Defines the catalog to be used to install MAS. You can set it to      ibm-operator-catalog for release install or ibm-mas-operators for development
+- `mas_upgrade_strategy` Defines the upgrade strategy for MAS operator. Default is set to Manual. If you want new releases to be applied automatically set this parameter to `Automatic`
 - `artifactory_username` Required when using this role for development versions of MAS
 - `artifactory_apikey` Required when using this role for development versions of MAS
 - `mas_channel` Defines which channel of MAS to subscribe to
@@ -27,7 +28,7 @@ Example Playbook
   vars:
     # Which MAS channel to subscribe to
     mas_channel: "{{ lookup('env', 'MAS_CHANNEL') | default('8.x', true) }}"
-
+    mas_upgrade_strategy: "{{ lookup('env', 'MAS_UPGRADE_STRATEGY') | default('Manual', true) }}"
     # MAS configuration
     custom_domain: "{{ lookup('env', 'MAS_DOMAIN') | default(None)}}"
     mas_instance_id: "{{ lookup('env', 'MAS_INSTANCE_ID') }}"

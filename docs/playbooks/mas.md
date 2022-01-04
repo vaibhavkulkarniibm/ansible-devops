@@ -11,6 +11,7 @@ Before you use this playbook you will likely want to edit the `mas_config` varia
 ### Optional environment variables
 - `MAS_CATALOG_SOURCE` Set to `ibm-mas-operators` if you want to deploy pre-release development builds
 - `MAS_CHANNEL` Override the default release channel (8.x)
+- `MAS_UPGRADE_STRATEGY` Override default Upgrade Strategy (Manual)
 - `MAS_DOMAIN` Override the default generated domain for the MAS installation
 - `MAS_ICR_CP` Override the registry source for all container images deployed by the MAS operator
 - `MAS_ICR_CPOPEN` Override the registry source for all container images deployed by the MAS operator
