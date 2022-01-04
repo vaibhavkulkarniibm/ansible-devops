@@ -80,9 +80,12 @@
   retries: 20
   delay: 60 # Retry for approx 20 minutes (60s * 20 attempts) before giving up
   until: mas_installplan_info.resources | length > 0  
+  when:
+    - mas_upgrade_strategy == 'Manual'
 
 - name: Approve the install plan for MAS
-  when:    
+  when:      
+    - mas_upgrade_strategy == 'Manual'
     - mas_installplan_info.resources[0].status.phase != "Complete"    
   community.kubernetes.k8s:
     definition:
@@ -93,6 +96,7 @@
         namespace: "{{ mas_namespace }}"
       spec:        
         approved: true   
+    
 
 # 7. Wait until the Suite CRD is available
 # -----------------------------------------------------------------------------
@@ -152,3 +156,10 @@
     state: present
     namespace: "{{ mas_namespace }}"
     definition: "{{ cr_definition }}"
+
+# 10. Handle IBM Common Services Install plan approvals when upgragre strategy is set to Manual
+# -----------------------------------------------------------------------------
+- include_tasks: tasks/ibm-common-services.yml
+  loop: "{{ibm_common_services_subscription_labels}}"
+  when:
+    - mas_upgrade_strategy == 'Manual'
