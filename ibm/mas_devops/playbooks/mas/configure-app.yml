@@ -12,7 +12,5 @@
     mas_app_id: "{{ lookup('env', 'MAS_APP_ID') }}"
     mas_appws_components: "{{ lookup('env', 'MAS_APPWS_COMPONENTS') }}"
 
-    provision_size: "{{ lookup('env', 'PROVISION_SIZE') | default('dev', True) }}"
-
   roles:
     - ibm.mas_devops.suite_app_configure
