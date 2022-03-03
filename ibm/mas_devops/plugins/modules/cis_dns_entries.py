@@ -41,7 +41,10 @@ def main():
             type = "str",
             required = True,
         ),
-
+        edge_certificate_hosts = dict(
+            type = 'list',
+            required = True
+        ),
         ibmcloud_apikey = dict(
             type = "str",
             required = True,
@@ -82,6 +85,7 @@ def main():
     openshiftIngress = module.params['ocp_ingress']
     domainPrefix = module.params['cis_subdomain']
     updateDNS = module.params['update_dns']
+    edgeCertificateHosts = module.params['edge_certificate_hosts']
 
     # User may want to select an specific zone
     dnsZone = module.params['dns_zone']
@@ -182,8 +186,9 @@ def main():
                     dnsId = existingDNSIDs[existingDNSEntries.index(entryName)]
                     # Updating DNS entry
                     url = f"https://api.cis.cloud.ibm.com/v1/{crn}/zones/{zoneId}/dns_records/{dnsId}"
+                    proxied = True
+                    payload="{\n    \"name\": \"" + entryName + "\",\n    \"type\": \"CNAME\",\n    \"content\": \"" + openshiftIngress + "\",\n    \"proxied\": true  \n}"
 
-                    payload="{\n    \"name\": \"" + entryName + "\",\n    \"type\": \"CNAME\",\n    \"content\": \"" + openshiftIngress + "\"\n}"
                     headers = {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
@@ -193,13 +198,13 @@ def main():
                     response = requests.request("PUT", url, headers=headers, data=payload)
                     if(response.status_code == 200):
                         changed = True
-                    #     DNS record updated successfully
+                    #     DNS record updated successfully                    
 
             else:
                 # Adding DNS entry
                 url = f"https://api.cis.cloud.ibm.com/v1/{crn}/zones/{zoneId}/dns_records"
 
-                payload="{\n    \"name\": \"" + entryName + "\",\n    \"type\": \"CNAME\",\n    \"content\": \"" + openshiftIngress + "\"\n}"
+                payload="{\n    \"name\": \"" + entryName + "\",\n    \"type\": \"CNAME\",\n    \"content\": \"" + openshiftIngress  + "\",\n    \"proxied\":  true  \n}"
                 headers = {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
@@ -210,6 +215,21 @@ def main():
                 if(response.status_code == 200):
                     changed = True
                     # DNS record created successfully
+
+            response = requests.request("PATCH", url, headers=headers, data=payload)
+            if(response.status_code == 200):
+                changed = True                
+
+        url = f"https://api.cis.cloud.ibm.com/v1/{crn}/zones/{zoneId}/ssl/certificate_packs/order"
+        payload = "{\n  \"hosts\": "+ "".join([str(i) for i in edgeCertificateHosts]) +", \"type\": \"advanced\" , \"certificate_authority\": \"digicert\ , \"validation_method\": \"txt\" , \"validity_days\": 365 \n}"
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Auth-User-Token': access_token
+            }
+        
+        response = requests.request("POST", url, headers=headers, data=payload)
+
     except requests.exceptions.RequestException as e:  # This is the correct syntax
         module.fail_json(msg = f"Error calling : {url}")
 

@@ -28,22 +28,53 @@
 
 - name: "DNS Entries"
   set_fact:
-    dns_entries:
+    dns_entries:            
       - ""
-      - "*"
-      - "*.api.monitor"
-      - "*.assist"
-      - "*.health"
-      - "*.home"
-      - "*.hputilities"
-      - "*.iot"
-      - "*.manage"
-      - "*.messaging.iot"
-      - "*.monitor"
-      - "*.predict"
-      - "*.safety"
-      - "*.visualinspection"
-      - "cis.test.cert"
+      - "*.ibm-sls"
+      - admin
+      - api
+      - auth
+      - home
+      - main.home
+      - main.health
+      - main-all.health
+      - maxinst-health
+      - iot
+      - messaging.iot
+      - manage
+      - main.manage
+      - monitor
+      - admin.monitor
+      - api.monitor
+      - predict
+      - safety
+      - visualinspection
+
+- name: "Egde Certificate Hosts"
+  set_fact:
+    edge_certificate_hosts:
+      - ""
+      - "*.ibm-sls.{{custom_domain}}"
+      - "admin.{{custom_domain}}"
+      - "api.{{custom_domain}}"
+      - "auth.{{custom_domain}}"
+      - "home.{{custom_domain}}"
+      - "main.home.{{custom_domain}}"
+      - "main.health..{{custom_domain}}"
+      - "main-all.health.{{custom_domain}}"
+      - "maxinst-health.{{custom_domain}}"
+      - "iot.{{custom_domain}}"
+      - "messaging.iot.{{custom_domain}}"
+      - "manage.{{custom_domain}}"
+      - "main.manage.{{custom_domain}}"
+      - "monitor.{{custom_domain}}"
+      - "admin.monitor.{{custom_domain}}"
+      - "api.monitor.{{custom_domain}}"
+      - "predict.{{custom_domain}}"
+      - "safety.{{custom_domain}}"
+      - "visualinspection.{{custom_domain}}"
+
+      
 
 - name: "Debug information"
   debug:
@@ -65,6 +96,7 @@
     cis_subdomain: "{{ cis_subdomain }}"
     update_dns: "{{ update_dns }}"
     ibmcloud_apikey: "{{ ibmcloud_apikey }}"
+    edge_certificate_hosts: "{{edge_certificate_hosts}}"
     # These are MAS 8.4 list of DNS Entries. cis_subdomain will be appended to it
     dns_entries: "{{ dns_entries }}"
   register: dnsoutput

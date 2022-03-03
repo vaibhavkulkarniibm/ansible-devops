@@ -12,7 +12,7 @@
     namespace: "{{ ibm_common_services_namespace }}"
     label_selectors:
       - "operators.coreos.com/{{item}}"
-  register: _item_subscription      
+  register: _item_subscription
 
 - name: Lookup and Approve IBM Common Services operators
   block:
@@ -23,10 +23,10 @@
         namespace: "{{ ibm_common_services_namespace }}"
         label_selectors:
           - "operators.coreos.com/{{item}}"
-      register: _item_subscription
+      register: _item_subscription_result
       retries: 20
       delay: 60 # Retry for approx 20 minutes (60s * 20 attempts) before giving up
-      until: _item_subscription.resources | length > 0
+      until: _item_subscription_result.resources | length > 0
 
     - name: Lookup Operator install plan
       community.kubernetes.k8s_info:
@@ -40,12 +40,12 @@
       delay: 60 # Retry for approx 20 minutes (60s * 20 attempts) before giving up
       until: item_install_plan.resources | length > 0
       when:
-        - _item_subscription.resources | length > 0
-        - _item_subscription.resources[0].status.state != "AtLatestKnown"
+        - _item_subscription_result.resources | length > 0
+        - _item_subscription_result.resources[0].status.state != "AtLatestKnown"
 
     - name: Approve the subscription install plan
       when:
-        - _item_subscription.resources[0].status.state != "AtLatestKnown"
+        - _item_subscription_result.resources[0].status.state != "AtLatestKnown"
         - item_install_plan.resources | length > 0
         - item_install_plan.resources[0].status.phase != "Complete"
       community.kubernetes.k8s:
@@ -58,4 +58,4 @@
           spec:
             approved: true
   when:
-    - _item_subscription.resources | length == 0
+    - (_item_subscription.resources | length == 0 or _item_subscription.resources[0].status.state == 'UpgradePending')

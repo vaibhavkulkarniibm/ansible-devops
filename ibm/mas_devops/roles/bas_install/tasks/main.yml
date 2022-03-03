@@ -33,13 +33,13 @@
   when: bas_password is not defined or bas_password == ""
   set_fact:
     bas_password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters') }}"
-  no_log: "{{ bas_password is defined }}"
+  # no_log: "{{ bas_password is defined }}"
 
 - name: "Generate bas_grafana_password if none has been provided"
   when: bas_grafana_password is not defined or bas_grafana_password == ""
   set_fact:
     bas_grafana_password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters') }}"
-  no_log: "{{ bas_grafana_password is defined }}"
+  # no_log: "{{ bas_grafana_password is defined }}"
 
 # 2. Provide Debug information
 # -----------------------------------------------------------------------------

@@ -34,8 +34,8 @@
 
 # 2. Load version-specific variables
 # -----------------------------------------------------------------------------
-- name: Load variables
-  include_vars: "vars/{{ cpd_version }}.yml"
+# - name: Load variables
+#   include_vars: "vars/{{ cpd_version }}.yml"
 
 
 # 3. Provide debug information to the user
@@ -49,26 +49,28 @@
       - "Db2 database name ...................... {{ db2wh_dbname }}"
       - "Db2 database schema .................... {{ db2wh_schema }}"
       - "Db2 database user ...................... {{ db2wh_username }}"
-
+      - "Db2 Details Config Map ................. {{ cp4d_db_config_configmap_name }}"
 
 # 4a. Determine Db2 instance ID from name - CP4D v3.5
 # -----------------------------------------------------------------------------
 # When we create the database instance, we save the instance ID in a config map
 # named mas-automation-config-{{db2wh_instance_name}}.  We need this instance ID
 # to access the engine pod.
+
+
 - name: "[CP4D v3.5] Load DB2 Deployment ID from Config Map"
   when: cpd_version == 'cpd35'
   community.kubernetes.k8s_info:
     api_version: v1
     kind: ConfigMap
-    name: "{{ cp4d_db_config_configmap_name }}-{{ db2wh_instance_name }}"
-    namespace: "{{ cpd_meta_namespace }}"
+    name: "{{ cp4d_db_config_configmap_name }}"
+    namespace: "ibm-aiapps-sre-pipelines"
   register: cp4d_db_config_info
 
 - name: "[CP4D v3.5] Read the DB2 database ID for {{ db2wh_instance_name }} from DB config ConfigMap data"
   when: cpd_version == 'cpd35'
   set_fact:
-    db2wh_instance_id: "db2wh-{{ cp4d_db_config_info.resources[0].data.db2wh_instance_id }}"
+    db2wh_instance_id: "db2wh-{{ cp4d_db_config_info.resources[0].data.cp4d_db_id }}"
 
 
 # 4b. Determine Db2 instance ID from name - CP4D v4.0

@@ -34,6 +34,19 @@
       - "App catalog source ........ {{ mas_app_catalog_source }}"
       - "App channel ............... {{ mas_app_channel }}"
 
+- name: Lookup Operator Installed Subcription
+  community.kubernetes.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    namespace: "{{ mas_app_namespace }}"
+    label_selectors:
+      - "operators.coreos.com/ibm-mas-{{mas_app_id}}.{{ mas_app_namespace }}"
+  register: _mas_app_subscription
+
+
+- name: Is it first install ?  
+  set_fact:
+    first_install: "{{ (_mas_app_subscription.resources | length == 0 and _mas_subscription.resources[0].status.installedCSV is not defined) | ternary(true, false)}}"
 
 # 4. Install the operator
 # -----------------------------------------------------------------------------
@@ -59,10 +72,12 @@
   retries: 20
   delay: 60 # Retry for approx 20 minutes (60s * 20 attempts) before giving up
   until: mas_app_installplan_info.resources | length > 0  
+  when: mas_app_upgrade_strategy == 'Manual'
 
 - name: Approve the install plan for MAS
   when:    
-    - mas_app_installplan_info.resources[0].status.phase != "Complete"    
+    - mas_app_upgrade_strategy == 'Manual'
+    - (mas_app_installplan_info.resources[0].status.phase != "Complete" or first_install)    
   community.kubernetes.k8s:
     definition:
       apiVersion: operators.coreos.com/v1alpha1
