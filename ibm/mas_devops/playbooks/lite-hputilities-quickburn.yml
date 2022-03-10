@@ -1,0 +1,91 @@
+---
+- hosts: localhost
+  any_errors_fatal: true
+
+# 1. Deploy & configure the cluster
+# -----------------------------------------------------------------------------
+- name: Deploy QuickBurn cluster in Fyre
+  import_playbook: ocp/provision-quickburn.yml
+
+- name: Login & configure OCP cluster
+  import_playbook: ocp/configure-ocp.yml
+  vars:
+    cluster_type: quickburn
+    username: "{{ lookup('env', 'FYRE_USERNAME') }}"
+    password: "{{ lookup('env', 'FYRE_APIKEY') }}"
+
+
+# # 2. Install MongoDb
+# # -----------------------------------------------------------------------------
+- name: Install MongoDb (Community Edition)
+  import_playbook: dependencies/install-mongodb-ce.yml
+  vars:
+    mongodb_storage_class: ocs-storagecluster-ceph-rbd
+    mas_config_dir: "{{ lookup('env', 'MAS_CONFIG_DIR') }}"
+
+
+# 3. Install SLS
+# -----------------------------------------------------------------------------
+- name: Install SLS
+  import_playbook: dependencies/install-sls.yml
+  vars:
+    sls_storage_class: ibmc-file-gold-gid
+    mas_config_dir: "{{ lookup('env', 'MAS_CONFIG_DIR') }}"
+
+    # Use the generated mongodb configuration
+    mongodb_namespace: "{{ lookup('env', 'MONGODB_NAMESPACE') | default('mongoce', True) }}"
+    mongodb_cfg_file: "{{ mas_config_dir }}/mongo-{{ mongodb_namespace }}.yml"
+
+
+# 4. Install BAS
+# -----------------------------------------------------------------------------
+- name: Install BAS
+  import_playbook: dependencies/install-bas.yml
+  vars:
+    bas_persistent_storage_class: "ibmc-file-bronze-gid"
+    bas_meta_storage_class: "ibmc-block-bronze"
+
+# 5. Install Db2 CP4D watsonstudio service and appconnect
+# -----------------------------------------------------------------------------
+- name: Install CP4D services
+  import_playbook: cp4d/install-services-watsonstudio.yml
+  vars:
+    cpd_version: cpd40
+    cpd_storage_class: ocs-storagecluster-cephfs
+    cpd_block_storage_class: ocs-storagecluster-ceph-rbd
+
+- name: Install AppConnect
+  import_playbook: dependencies/install-appconnect.yml
+  vars:
+    appconnect_version: 12.0.2.0-r2
+
+# 6. Install & configure MAS
+# -----------------------------------------------------------------------------
+- name: Install & configure MAS
+  import_playbook: mas/install-suite.yml
+  vars:
+    mas_config_dir: "{{ lookup('env', 'MAS_CONFIG_DIR') }}"
+
+# 7. Install/Configure HPUtilities Dependency
+- name: Install & configure MAS
+  import_playbook: mas/prepare-hputilities-dependencyconf.yml
+  vars:
+    mas_config_dir: "{{ lookup('env', 'MAS_CONFIG_DIR') }}"
+    mas_instance_id: "{{ lookup('env', 'MAS_INSTANCE_ID') }}"
+    cos_type: ocs
+
+# 9. Install & Configure HPUtilities application
+# -----------------------------------------------------------------------------
+- name: Install & configure HPUtilities
+  import_playbook: mas/install-app.yml
+  vars:
+    mas_app_id: hputilities
+    mas_app_channel: m3dev
+
+# Note that this sample playbook is always assuming a workspace ID of masdev,
+# this can easily be modified when creating your own playbooks.
+- name: Configure HPUtilities
+  import_playbook: mas/configure-app.yml
+  vars:
+    mas_app_id: hputilities
+    mas_workspace_id: masdev
