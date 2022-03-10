@@ -57,7 +57,7 @@
 - name: Install AppConnect
   import_playbook: dependencies/install-appconnect.yml
   vars:
-    appconnect_version: 12.0.2.0-r2
+    appconnect_version: 12.0
 
 # 6. Install & configure MAS
 # -----------------------------------------------------------------------------
@@ -72,7 +72,6 @@
   vars:
     mas_config_dir: "{{ lookup('env', 'MAS_CONFIG_DIR') }}"
     mas_instance_id: "{{ lookup('env', 'MAS_INSTANCE_ID') }}"
-    cos_type: ocs
 
 # 9. Install & Configure HPUtilities application
 # -----------------------------------------------------------------------------

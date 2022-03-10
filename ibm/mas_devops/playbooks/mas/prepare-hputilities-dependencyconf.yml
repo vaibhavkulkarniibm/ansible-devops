@@ -4,7 +4,13 @@
   vars:
     mas_instance_id: "{{ lookup('env', 'MAS_INSTANCE_ID') }}"
     mas_config_dir: "{{ lookup('env', 'MAS_CONFIG_DIR') }}"
+    cpd_storage_class: ibmc-file-gold-gid
+    cpd_wd_storage_class: ibmc-block-gold
+    # Install the Db2 Warehouse & WSL services
+    cpd_services:
+      - db2wh
+      - wsl
   roles:
-    - ibm.mas_devops.appconnect_config
-    - ibm.mas_devops.cp4d_ws
+    - ibm.mas_devops.appconnect_install
+    - ibm.mas_devops.cp4d_install_services
     - ibm.mas_devops.suite_config
