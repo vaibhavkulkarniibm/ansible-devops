@@ -150,7 +150,7 @@
 # 6. Bootstrap the license service
 # -----------------------------------------------------------------------------
 - include_tasks: tasks/bootstrap.yml
-  when: bootstrap is defined
+  when: bootstrap.license_id is defined or bootstrap.license_file is defined or bootstrap.registration_key is defined
 
 
 # 7. Create the license service CR
